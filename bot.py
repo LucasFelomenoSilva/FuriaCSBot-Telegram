@@ -1,35 +1,71 @@
-from telegram import Update
-from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
-import google.generativeai as genai
+from flask import Flask, request
+import telegram
 import os
 from dotenv import load_dotenv
+import google.generativeai as genai
 
 load_dotenv()
 
-genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
-model = genai.GenerativeModel('gemini-2.0-flash')
+TOKEN = os.getenv("TELEGRAM_TOKEN")
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+
+genai.configure(api_key=GEMINI_API_KEY)
+bot = telegram.Bot(token=TOKEN)
+
+from telegram import Update
+from telegram.ext import Dispatcher, CommandHandler, MessageHandler, filters
+
+app = Flask(__name__)
+
+model = genai.GenerativeModel('gemini-2.0-pro')
 chat = model.start_chat()
 
-contexto = "Você é um assistente especializado em FURIA Esports no cenário do CS. Sempre forneça respostas relacionadas ao time, seus jogadores, histórico e próximos eventos, sem ser explícito demais sobre o time. Mantenha a conversa natural e focada na FURIAGG."
+contexto = "Você é um assistente especializado em FURIA Esports no cenário de CS:GO. Responda apenas relacionado à FURIA."
 
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text('👋 Olá! Sou o assistente oficial da FURIA Esports. Pergunte o que quiser! 🎯')
 
-async def responder(update: Update, context: ContextTypes.DEFAULT_TYPE):
+def start(update: Update, context):
+    update.message.reply_text("👋 Olá! Sou o bot da FURIA Esports! Digite sua pergunta ou use os comandos disponíveis: /jogadores, /historico, /eventos.")
+
+def jogadores(update: Update, context):
+    mensagem = "🎮 Jogadores atuais da FURIA:\n- KSCERATO\n- yuurih\n- chelo\n- arT\n- FalleN"
+    update.message.reply_text(mensagem)
+
+def historico(update: Update, context):
+    mensagem = "📜 Histórico da FURIA:\nFundada em 2017, a FURIA se destacou no cenário internacional de CS:GO com grandes participações em Majors e torneios de prestígio."
+    update.message.reply_text(mensagem)
+
+def eventos(update: Update, context):
+    mensagem = "📅 Próximos eventos da FURIA:\n- ESL Pro League\n- BLAST Premier\n- IEM Cologne"
+    update.message.reply_text(mensagem)
+
+
+def receber_mensagem(update: Update, context):
     mensagem_usuario = update.message.text
-    pensando_msg = await update.message.reply_text('⌛ Estou pensando na melhor resposta para você...')
 
     prompt_completo = f"{contexto}\nUsuário: {mensagem_usuario}\nAssistente:"
     resposta = chat.send_message(prompt_completo)
 
-    resposta_final = f"🦊 **FURIA Responde:**\n\n{resposta.text}"
+    update.message.reply_chat_action(action=telegram.constants.ChatAction.TYPING)
 
-    await pensando_msg.edit_text(resposta_final, parse_mode="Markdown")
+    update.message.reply_text(resposta.text)
 
 
-app = ApplicationBuilder().token(os.getenv("TELEGRAM_BOT_TOKEN")).build()
+@app.route(f"/bot{TOKEN}", methods=["POST"])
+def webhook():
+    dispatcher = Dispatcher(bot, None, workers=0)
+    dispatcher.add_handler(CommandHandler("start", start))
+    dispatcher.add_handler(CommandHandler("jogadores", jogadores))
+    dispatcher.add_handler(CommandHandler("historico", historico))
+    dispatcher.add_handler(CommandHandler("eventos", eventos))
+    dispatcher.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, receber_mensagem))
 
-app.add_handler(CommandHandler("start", start))
-app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, responder))
+    update = telegram.Update.de_json(request.get_json(force=True), bot)
+    dispatcher.process_update(update)
+    return "ok"
 
-app.run_polling()
+@app.route("/")
+def index():
+    return "Bot da FURIA no ar!"
+
+if __name__ == "__main__":
+    app.run(port=int(os.environ.get("PORT", 5000)))
