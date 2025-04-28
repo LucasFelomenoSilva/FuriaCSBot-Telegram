@@ -1,39 +1,36 @@
+
+from telegram import Update
+from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
+import google.generativeai as genai
 import os
 from dotenv import load_dotenv
-from telegram import Update, BotCommand
-from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, ContextTypes, filters
 
 load_dotenv()
 
-TOKEN = os.getenv("TELEGRAM_TOKEN")
+genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
+model = genai.GenerativeModel('gemini-2.0-flash')
+chat = model.start_chat()
 
-async def set_commands(application):
-    commands = [
-        BotCommand("start", "Iniciar conversa com o bot"),
-        BotCommand("jogadores", "Ver jogadores da FURIA 🎮"),
-        BotCommand("historico", "Histórico do time 📜"),
-        BotCommand("eventos", "Próximos eventos 📅"),
-    ]
-    await application.bot.set_my_commands(commands)
-    print("✅ Comandos definidos com sucesso!")
+contexto = "Você é um assistente especializado em FURIA Esports no cenário do CS. Sempre forneça respostas relacionadas ao time, seus jogadores, histórico e próximos eventos, sem ser explícito demais sobre o time. Mantenha a conversa natural e focada na FURIAGG."
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Olá! Eu sou o Bot da FURIA 🎮")
+    await update.message.reply_text('👋 Olá! Sou o assistente oficial da FURIA Esports. Pergunte o que quiser! 🎯')
 
-async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Digite um comando válido ou use /start!")
+async def responder(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    mensagem_usuario = update.message.text
+    pensando_msg = await update.message.reply_text('⌛ Estou pensando na melhor resposta para você...')
 
-async def main():
-    application = ApplicationBuilder().token(TOKEN).build()
+    prompt_completo = f"{contexto}\nUsuário: {mensagem_usuario}\nAssistente:"
+    resposta = chat.send_message(prompt_completo)
 
-    await set_commands(application)
+    resposta_final = f"🦊 **FURIA Responde:**\n\n{resposta.text}"
 
-    application.add_handler(CommandHandler("start", start))
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-
-    await application.run_polling()
+    await pensando_msg.edit_text(resposta_final, parse_mode="Markdown")
 
 
-if __name__ == '__main__':
-    import asyncio
-    asyncio.run(main())
+app = ApplicationBuilder().token(os.getenv("TELEGRAM_BOT_TOKEN")).build()
+
+app.add_handler(CommandHandler("start", start))
+app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, responder))
+
+app.run_polling()
